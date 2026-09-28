@@ -4,6 +4,7 @@
       <h1>Automations</h1>
       <div style="display: flex; gap: 8px;">
         <button class="ab-btn ab-btn-ghost ab-btn-sm" @click="openTemplates">Email Templates</button>
+        <button class="ab-btn ab-btn-ghost ab-btn-sm" @click="openVariables">Global Variables</button>
         <button class="ab-btn ab-btn-primary ab-btn-sm" @click="createNew">New Automation</button>
       </div>
     </div>
@@ -77,6 +78,10 @@ function createNew() {
 
 function openTemplates() {
   router.push({ name: 'templates' })
+}
+
+function openVariables() {
+  router.push({ name: 'variables' })
 }
 
 function openBuilder(name) {

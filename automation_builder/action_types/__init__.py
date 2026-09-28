@@ -84,3 +84,7 @@ from automation_builder.action_types import telegram  # noqa: E402, F401
 from automation_builder.action_types import update_field  # noqa: E402, F401
 from automation_builder.action_types import if_condition  # noqa: E402, F401
 from automation_builder.action_types import switch_case  # noqa: E402, F401
+from automation_builder.action_types import slack  # noqa: E402, F401
+from automation_builder.action_types import assign_to  # noqa: E402, F401
+from automation_builder.action_types import workflow_transition  # noqa: E402, F401
+from automation_builder.action_types import generate_pdf  # noqa: E402, F401

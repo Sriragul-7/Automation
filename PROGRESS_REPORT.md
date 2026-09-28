@@ -2813,3 +2813,74 @@ User's exact scenario tested and confirmed working:
 - `frontend/src/components/ActionConfigForm.vue` — field_select, case_list support, http_request headers fix
 
 *Pre-existing pollution: `test_22_cross_doctype::test_full_path_skip_via_on_doc_event` uses hardcoded `TEST-FullPathSkip` automation name that collides on re-run. Not related to Stage 30 changes.
+
+---
+
+## Stage 31 — Five new action types via registry (Slack, Assign To, Workflow Transition, PDF, Global Variables) — 2026-09-28
+
+### Each of the 5: implementation summary + real verification result
+
+**1. Slack (`action_types/slack.py`)** — Thin wrapper over `http_request.make_http_request`, identical pattern to telegram.py. Webhook URL stored in Automation Builder Settings as `slack_webhook_url` (Password field, encrypted store — same convention as `telegram_bot_token`). config_schema: trigger_doctype_select + channel (optional override) + message (textarea, token support). Mock mode wording: "MOCK MODE (no Slack webhook configured): would have sent to {channel}: '{message}'". **Verified**: Lead insert → real dispatch → Slack mock-mode log with token-resolved message and channel (test_slack_mock_mode_real_dispatch).
+
+**2. Assign To (`action_types/assign_to.py`)** — Uses Frappe's native `frappe.desk.form.assign_to.add` (duplicate suppression, document sharing, notifications all inherited). config_schema: trigger_doctype_select + target (Same/Linked Document, reuse update_field pattern) + link_fieldname + assign_to_user (supports `{{trigger.owner}}`) + description + priority (Low/Medium/High) + due_date. Denylist check on target doc. **Verified**: Lead insert → real dispatch → real High-priority ToDo created on the Lead, visible via Frappe's own assignment API (test_assign_to_creates_real_todo).
+
+**3. Workflow Transition (`action_types/workflow_transition.py`)** — Calls `frappe.model.workflow.apply_workflow` against Same/Linked Document target. config_schema: trigger_doctype_select + target + link_fieldname + transition_action (new `workflow_transition_select` field type). Role enforcement inherited from apply_workflow (transitions filter by `allowed` role of session user). **Verified**: ToDo insert (workflow_state=Pending) → real dispatch → real state change to Approved, confirmed on a fresh doc read; log shows "Pending → Approved" (test_workflow_transition_real_state_change). Demo example: "PO over ₹5,00,000 → auto-advance to Pending Approval" maps directly.
+
+**4. Generate PDF (`action_types/generate_pdf.py`)** — Uses Frappe's real print rendering (`frappe.utils.print_utils.attach_print` — same call as the desk Print button), no hand-rolled PDF. In this Frappe version attach_print returns `{fname, fcontent}` without persisting — the action saves the File attachment itself and/or emails it. config_schema: trigger_doctype_select + target + link_fieldname + print_format (new `print_format_picker` field type) + attach_to_document + email_to + email_subject. **Verified**: Note insert → real dispatch → real PDF File attached to the Note (File record exists; test_generate_pdf_real_attachment).
+
+**5. Global Variables** — New DocType `Automation Global Variable` (variable_name unique, description, value). `_helpers.resolve_value` extended with `{{env.varname}}` token (sanitized like trigger tokens, missing → empty). Whitelisted APIs: `list_global_variables`, `save_global_variable` (standard permission pattern). Frontend: `GlobalVariables.vue` list/edit view (EmailTemplates pattern), route `/variables`, "Global Variables" button on AutomationList. **Verified**: variable created → Lead insert → send_email with `{{env.st31_test_base_url}}` in subject — the actual `frappe.sendmail` call received the resolved URL (test_env_token_resolves_in_send_email); plus CRUD API test.
+
+### Confirmation: zero core dispatcher/executor changes needed
+
+- All 5 features are pure registry additions: `config_schema` + `execute_fn` via `register_action_type`. **No changes to dispatcher.py's walk logic, executor.py, or the graph engine were needed for any feature.** The registry pattern held up.
+- Frontend: picker/palette/config rendering picked up all 5 automatically from `get_action_types()`. TWO new generic field-type handlers were added to ActionConfigForm.vue (`workflow_transition_select`, `print_format_picker`) — these extend the schema-driven renderer (same pattern as Stage 30's `field_select`/`case_list`), not special-cases. Flagged per the prompt's zero-frontend-change guarantee.
+- **Separate pre-existing bug discovered and fixed during testing** (not caused by Stage 31 features): docs created by `create_document` actions fire `on_update` too and could match other Published automations, recursing without bound (runaway job factory) — and each `frappe.log_error` in that path deepcopies huge locals via traceback_with_variables (minutes-long hang). Fix: dispatcher.py `_execute_action` sets `frappe.flags["_in_automation_action"]` during action execution and `on_doc_event` skips events fired by actions. This is a re-entry-guard bug fix, not a routing/walking change. Also: test_26_5_stress classes now tearDown-clean all ST26.5 automations (leftover Published automations were the trigger), and test_22_cross_doctype's setUp/tearDown now clean `TEST-FullPathSkip`.
+
+### Denylist/security consideration for Workflow Transition
+
+- `check_denylist(target_doc.doctype)` is enforced — workflow transitions cannot be applied to User/Role/Server Script/Workflow (itself)/Automation doctypes etc.
+- `apply_workflow` respects each Workflow's own configured transitions AND `allowed` roles for the current session user — an automation cannot bypass approval gates on doctypes it legitimately targets beyond what the workflow itself permits the running user.
+- Residual risk accepted: automations running as Administrator advance states as Administrator (webhook/schedule runs). Mitigation is Frappe-native: restrict which users can publish/enable automations (System Manager only, enforced at save).
+- The denylist needed NO extension for Slack/AssignTo/PDF (read-only or assignment-scoped effects on allowed business docs).
+
+### Frontend changes (flagged)
+
+- `frontend/src/components/ActionConfigForm.vue` — `workflow_transition_select` + `print_format_picker` field-type handlers (generic renderer extension), `loadWorkflowTransitions`/`loadPrintFormats`, watch keys extended
+- `frontend/src/views/GlobalVariables.vue` — new list/edit view
+- `frontend/src/main.js` — `/variables` route
+- `frontend/src/views/AutomationList.vue` — Global Variables button
+- `frontend/src/composables/api.js` — `listGlobalVariables`, `saveGlobalVariable`, `getWorkflowTransitions`, `getPrintFormats`
+
+### Backend changes
+
+- `automation_builder/action_types/slack.py`, `assign_to.py`, `workflow_transition.py`, `generate_pdf.py` — 4 new action types
+- `automation_builder/action_types/__init__.py` — registered all 4 (11 total: 9 actions + 2 logic)
+- `automation_builder/action_types/_helpers.py` — `{{env.*}}` token support in resolve_value
+- `automation_builder/api.py` — `list_global_variables`, `save_global_variable`, `get_workflow_transitions`, `get_print_formats`
+- `automation_builder/automation_builder/doctype/automation_global_variable/` — new DocType (controller class required for non-orphaned migrate)
+- `automation_builder/automation_builder/doctype/automation_builder_settings/automation_builder_settings.json` — Slack section + webhook URL
+- `automation_builder/dispatcher.py` — recursion guard fix (pre-existing bug, see above)
+
+### Full test suite count
+
+| Module | Tests | Status |
+|--------|-------|--------|
+| test_graph_traversal | 8 | ✅ OK |
+| test_17b_verify | 14 | ✅ OK |
+| test_18_branching | 22 | ✅ OK |
+| test_19_security | 30 | ✅ OK |
+| test_20a_multitrigger | 3 | ✅ OK |
+| test_20_condition_groups | 21 | ✅ OK |
+| test_22_cross_doctype | 14 | ✅ OK (pollution + hang fixed) |
+| test_23_5_scoping | 8 | ✅ OK |
+| test_24_manual_schedule | 21 | ✅ OK |
+| test_25_webhook | 13 | ✅ OK |
+| test_26_5_stress | 21 | ✅ OK (hang fixed) |
+| test_28_convergence_condition | 19 | ✅ OK |
+| test_29_multitrigger_canonical | 15 | ✅ OK |
+| test_29_final_e2e | 1 | ✅ OK |
+| test_migration_patch | 7 | ✅ OK |
+| test_31_new_action_types | 12 | ✅ OK |
+| **Total** | **229** | **0 failures** |
+
+Build: OK (2.25s, 340KB JS / 108KB gz, 35KB CSS)

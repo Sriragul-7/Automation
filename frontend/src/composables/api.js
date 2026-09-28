@@ -61,3 +61,19 @@ export function searchDocuments(doctype, query) {
 export function regenerateWebhookToken(data) {
   return call('regenerate_webhook_token', data)
 }
+
+export function listGlobalVariables() {
+  return call('list_global_variables')
+}
+
+export function saveGlobalVariable(data) {
+  return call('save_global_variable', data)
+}
+
+export function getWorkflowTransitions(doctype) {
+  return call('get_workflow_transitions', { doctype })
+}
+
+export function getPrintFormats(doctype) {
+  return call('get_print_formats', { doctype })
+}

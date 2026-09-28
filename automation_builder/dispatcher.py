@@ -135,6 +135,12 @@ def on_doc_event(doc, method):
     if frappe.flags.get(guard_key):
         return
 
+    # Skip events fired BY an automation action (e.g. a create_document action
+    # inserting a Note). Without this, a created doc can match another
+    # automation and recurse without bound (runaway job factory).
+    if frappe.flags.get("_in_automation_action"):
+        return
+
     try:
         # Query automations: must be enabled AND published
         # Join with Automation Trigger child table to match trigger_doctype and trigger_event
@@ -420,7 +426,13 @@ def _execute_action(action_type, config, context):
         }
 
     try:
-        return handler["execute"](context, config)
+        # Global guard: while an action executes, any doc event it fires is
+        # skipped (prevents create_document recursion loops)
+        frappe.flags["_in_automation_action"] = True
+        try:
+            return handler["execute"](context, config)
+        finally:
+            frappe.flags["_in_automation_action"] = False
     except Exception as e:
         return {
             "step_type": action_type,

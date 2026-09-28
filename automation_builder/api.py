@@ -926,3 +926,98 @@ def save_email_template(name=None, template_name=None, subject=None, body=None):
         doc.insert(ignore_permissions=True)
 
     return {"name": doc.name, "template_name": doc.template_name}
+
+
+@frappe.whitelist()
+def list_global_variables():
+    """Return list of Automation Global Variables."""
+    if not frappe.session.user or frappe.session.user == "Guest":
+        frappe.throw(_("Login required"), frappe.DoesNotExistError)
+    if not frappe.has_permission("Automation Global Variable", "read"):
+        frappe.throw(_("Insufficient permissions"))
+    return frappe.get_all(
+        "Automation Global Variable",
+        fields=["name", "variable_name", "description", "value", "modified"],
+        order_by="variable_name asc",
+    )
+
+
+@frappe.whitelist()
+def save_global_variable(name=None, variable_name=None, value=None, description=None):
+    """Create or update an Automation Global Variable."""
+    if not frappe.has_permission("Automation Global Variable", "write"):
+        frappe.throw(_("Insufficient permissions"))
+
+    if name and frappe.db.exists("Automation Global Variable", name):
+        doc = frappe.get_doc("Automation Global Variable", name)
+        doc.variable_name = variable_name or doc.variable_name
+        doc.value = value if value is not None else doc.value
+        doc.description = description if description is not None else doc.description
+        doc.save(ignore_permissions=True)
+    else:
+        if not variable_name:
+            frappe.throw(_("Variable name is required"))
+        doc = frappe.new_doc("Automation Global Variable")
+        doc.variable_name = variable_name
+        doc.value = value
+        doc.description = description
+        doc.insert(ignore_permissions=True)
+
+    return {"name": doc.name, "variable_name": doc.variable_name}
+
+
+@frappe.whitelist()
+def get_workflow_transitions(doctype):
+    """Return the configured Workflow transitions for *doctype*.
+
+    Used by the workflow_transition_select frontend field to populate real
+    transition action labels (not raw state names).
+    """
+    if not frappe.session.user or frappe.session.user == "Guest":
+        frappe.throw(_("Login required"), frappe.DoesNotExistError)
+    if not frappe.has_permission("Workflow", "read"):
+        frappe.throw(_("Insufficient permissions"))
+
+    from frappe.model.workflow import get_workflow, get_workflow_name
+
+    workflow_name = get_workflow_name(doctype)
+    if not workflow_name:
+        return {"has_workflow": False, "transitions": []}
+
+    try:
+        workflow = get_workflow(doctype)
+    except Exception:
+        return {"has_workflow": False, "transitions": []}
+
+    transitions = []
+    for t in workflow.transitions:
+        transitions.append({
+            "action": t.action,
+            "state": t.state,
+            "next_state": t.next_state,
+            "allowed": t.allowed,
+        })
+    return {"has_workflow": True, "transitions": transitions}
+
+
+@frappe.whitelist()
+def get_print_formats(doctype):
+    """Return available Print Formats for *doctype*.
+
+    Used by the print_format_picker frontend field.
+    """
+    if not frappe.session.user or frappe.session.user == "Guest":
+        frappe.throw(_("Login required"), frappe.DoesNotExistError)
+    if not frappe.has_permission("Print Format", "read"):
+        frappe.throw(_("Insufficient permissions"))
+
+    formats = frappe.get_all(
+        "Print Format",
+        filters={"doc_type": doctype, "disabled": 0},
+        fields=["name"],
+        order_by="name asc",
+    )
+    names = [f.name for f in formats]
+    if "Standard" not in names:
+        names.insert(0, "Standard")
+    return names

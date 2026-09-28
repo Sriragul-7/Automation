@@ -5,7 +5,9 @@
  "engine": "InnoDB",
  "field_order": [
   "telegram_section",
-  "telegram_bot_token"
+  "telegram_bot_token",
+  "slack_section",
+  "slack_webhook_url"
  ],
  "fields": [
   {
@@ -13,11 +15,22 @@
    "fieldtype": "Section Break",
    "label": "Telegram"
   },
+    {
+     "fieldname": "telegram_bot_token",
+      "fieldtype": "Password",
+      "label": "Bot Token",
+      "description": "The bot token from @BotFather. If left blank, Telegram actions run in mock mode."
+    },
+  {
+   "fieldname": "slack_section",
+   "fieldtype": "Section Break",
+   "label": "Slack"
+  },
    {
-    "fieldname": "telegram_bot_token",
-     "fieldtype": "Password",
-     "label": "Bot Token",
-     "description": "The bot token from @BotFather. If left blank, Telegram actions run in mock mode."
+    "fieldname": "slack_webhook_url",
+    "fieldtype": "Password",
+    "label": "Incoming Webhook URL",
+    "description": "Slack incoming webhook URL (https://hooks.slack.com/services/...). If left blank, Slack actions run in mock mode."
    }
  ],
  "index_web_pages_for_search": 0,

@@ -14,6 +14,7 @@ const routes = [
   { path: '/builder/:name?', name: 'builder', component: () => import('./views/AutomationBuilder.vue') },
   { path: '/runs/:name', name: 'runs', component: () => import('./views/RunHistory.vue') },
   { path: '/templates', name: 'templates', component: () => import('./views/EmailTemplates.vue') },
+  { path: '/variables', name: 'variables', component: () => import('./views/GlobalVariables.vue') },
 ]
 
 const router = createRouter({

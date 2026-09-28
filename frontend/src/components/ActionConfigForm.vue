@@ -152,6 +152,32 @@
         </option>
       </select>
 
+      <!-- workflow_transition_select: real transitions from the target doctype's Workflow -->
+      <template v-else-if="field.type === 'workflow_transition_select'">
+        <select
+          :value="config[field.name]"
+          @change="update(field.name, $event.target.value)"
+        >
+          <option value="">Select transition...</option>
+          <option v-for="t in workflowTransitions" :key="t.action + t.state" :value="t.action">
+            {{ t.action }} ({{ t.state }} → {{ t.next_state }})
+          </option>
+        </select>
+        <p v-if="!workflowHasWorkflow && resolvedTargetDoctype" class="ab-config-hint ab-config-hint-warn">
+          {{ resolvedTargetDoctype }} has no Workflow configured — configure one first.
+        </p>
+      </template>
+
+      <!-- print_format_picker: available Print Formats for the target doctype -->
+      <select
+        v-else-if="field.type === 'print_format_picker'"
+        :value="config[field.name]"
+        @change="update(field.name, $event.target.value)"
+      >
+        <option value="">Select Print Format...</option>
+        <option v-for="pf in printFormats" :key="pf" :value="pf">{{ pf }}</option>
+      </select>
+
       <!-- fallback: plain text input -->
       <input
         v-else
@@ -165,7 +191,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { getDoctypeList, getDoctypeFields, listEmailTemplates } from '../composables/api.js'
+import { getDoctypeList, getDoctypeFields, listEmailTemplates, getWorkflowTransitions, getPrintFormats } from '../composables/api.js'
 
 const props = defineProps({
   schema: { type: Array, required: true },
@@ -180,6 +206,9 @@ const doctypes = ref([])
 const triggerFields = ref([])
 const linkedTargetFields = ref([])
 const emailTemplates = ref([])
+const workflowTransitions = ref([])
+const workflowHasWorkflow = ref(false)
+const printFormats = ref([])
 const tokenPlaceholder = '{{trigger.fieldname}}'
 
 const linkFieldsFromTrigger = computed(() => {
@@ -199,11 +228,59 @@ const isHttpRequestHeaders = computed(() => {
   return props.config.action_type === 'http_request'
 })
 
-// For field_select (IF/Switch field_to_check), we need realFields + pseudo-field
 const realFields = computed(() => triggerFields.value.filter(f => f.fieldname !== '__trigger_doctype__'))
 const hasTriggerDoctypePseudoField = computed(() => {
   return ['if_condition', 'switch_case'].includes(props.config.action_type)
 })
+
+// Doctype the workflow/print-format selectors resolve against: the linked
+// doctype for Linked Document mode, else the trigger doctype
+const resolvedTargetDoctype = computed(() => {
+  if (props.config.target === 'Linked Document' && props.config.link_fieldname) {
+    const lf = triggerFields.value.find(f => f.fieldname === props.config.link_fieldname)
+    if (lf && lf.options) return lf.options
+  }
+  return props.triggerDoctype || ''
+})
+
+// Which doctype determines available print formats
+const printFormatDoctype = computed(() => {
+  if (props.config.target === 'Linked Document' && props.config.link_fieldname) {
+    const lf = triggerFields.value.find(f => f.fieldname === props.config.link_fieldname)
+    if (lf && lf.options) return lf.options
+  }
+  return props.triggerDoctype || ''
+})
+
+async function loadWorkflowTransitions() {
+  const dt = resolvedTargetDoctype.value
+  if (!dt) {
+    workflowTransitions.value = []
+    workflowHasWorkflow.value = false
+    return
+  }
+  try {
+    const result = await getWorkflowTransitions(dt)
+    workflowHasWorkflow.value = !!result?.has_workflow
+    workflowTransitions.value = result?.transitions || []
+  } catch (e) {
+    workflowTransitions.value = []
+    workflowHasWorkflow.value = false
+  }
+}
+
+async function loadPrintFormats() {
+  const dt = printFormatDoctype.value
+  if (!dt) {
+    printFormats.value = []
+    return
+  }
+  try {
+    printFormats.value = await getPrintFormats(dt)
+  } catch (e) {
+    printFormats.value = []
+  }
+}
 
 function isFieldVisible(field) {
   if (!field.depends_on) return true
@@ -347,12 +424,18 @@ onMounted(async () => {
   }
 
   await loadFields()
+  await loadWorkflowTransitions()
+  await loadPrintFormats()
 })
 
 // Watch triggerDoctype changes (e.g., user sets trigger doctype after adding action)
 watch(
   () => props.triggerDoctype,
-  () => loadFields()
+  () => {
+    loadFields()
+    loadWorkflowTransitions()
+    loadPrintFormats()
+  }
 )
 
 // Reload fields only when a field-affecting key changes. A deep watch on
@@ -366,6 +449,10 @@ watch(
     props.config.link_fieldname,
     props.config.trigger_doctype_select,
   ],
-  () => loadFields()
+  () => {
+    loadFields()
+    loadWorkflowTransitions()
+    loadPrintFormats()
+  }
 )
 </script>

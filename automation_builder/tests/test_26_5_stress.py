@@ -168,8 +168,19 @@ def _step_output_contains(steps, text):
     return any(text in (s.output or "") for s in steps)
 
 
+
+def _cleanup_all_st26_5():
+    """Delete all ST26.5 automations (prevents leftover Published automations
+    from firing on real document events across test runs)."""
+    for n in frappe.get_all("Automation", filters={"name": ["like", "ST26.5-%"]}, pluck="name"):
+        frappe.delete_doc("Automation", n, force=True)
+    frappe.db.commit()
+
 class TestStage26_5CategoryA(IntegrationTestCase):
     """Category A — Basic tagged routing at scale."""
+
+    def tearDown(self):
+        _cleanup_all_st26_5()
 
     def setUp(self):
         self.created_docs = []
@@ -407,6 +418,9 @@ class TestStage26_5CategoryA(IntegrationTestCase):
 class TestStage26_5CategoryB(IntegrationTestCase):
     """Category B — Convergence and shared-node correctness."""
 
+    def tearDown(self):
+        _cleanup_all_st26_5()
+
     def _cleanup_auto(self, name):
         if frappe.db.exists("Automation", name):
             frappe.delete_doc("Automation", name, force=True)
@@ -576,6 +590,9 @@ class TestStage26_5CategoryB(IntegrationTestCase):
 class TestStage26_5CategoryC(IntegrationTestCase):
     """Category C — IF/Switch combined with trigger tagging."""
 
+    def tearDown(self):
+        _cleanup_all_st26_5()
+
     def _cleanup_auto(self, name):
         if frappe.db.exists("Automation", name):
             frappe.delete_doc("Automation", name, force=True)
@@ -737,6 +754,9 @@ class TestStage26_5CategoryC(IntegrationTestCase):
 class TestStage26_5CategoryD(IntegrationTestCase):
     """Category D — Mixed trigger TYPES."""
 
+    def tearDown(self):
+        _cleanup_all_st26_5()
+
     def _cleanup_auto(self, name):
         if frappe.db.exists("Automation", name):
             frappe.delete_doc("Automation", name, force=True)
@@ -882,6 +902,9 @@ class TestStage26_5CategoryD(IntegrationTestCase):
 
 class TestStage26_5CategoryE(IntegrationTestCase):
     """Category E — Edge-case resilience."""
+
+    def tearDown(self):
+        _cleanup_all_st26_5()
 
     def _cleanup_auto(self, name):
         if frappe.db.exists("Automation", name):
@@ -1109,6 +1132,9 @@ class TestStage26_5CategoryE(IntegrationTestCase):
 class TestStage26_5CategoryF(IntegrationTestCase):
     """Category F — Governance interplay."""
 
+    def tearDown(self):
+        _cleanup_all_st26_5()
+
     def _cleanup_auto(self, name):
         if frappe.db.exists("Automation", name):
             frappe.delete_doc("Automation", name, force=True)
@@ -1190,6 +1216,9 @@ class TestStage26_5CategoryF(IntegrationTestCase):
 class TestStage26_5Gap4ScheduleTick(IntegrationTestCase):
     """Gap 4 — Schedule trigger tick through full tagged-edge routing chain."""
 
+    def tearDown(self):
+        _cleanup_all_st26_5()
+
     def _cleanup_auto(self, name):
         if frappe.db.exists("Automation", name):
             frappe.delete_doc("Automation", name, force=True)
@@ -1265,6 +1294,9 @@ class TestStage26_5Gap4ScheduleTick(IntegrationTestCase):
 
 class TestStage26_5Gap5WebhookHttpPost(IntegrationTestCase):
     """Gap 5 — Webhook trigger fired through the real endpoint with tagged edges."""
+
+    def tearDown(self):
+        _cleanup_all_st26_5()
 
     def _cleanup_auto(self, name):
         if frappe.db.exists("Automation", name):

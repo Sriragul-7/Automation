@@ -7,6 +7,21 @@ from frappe.utils import sanitize_html
 
 TRIGGER_DOCTYPE_FIELD = "__trigger_doctype__"
 _TRIGGER_TOKEN_RE = re.compile(r"\{\{trigger\.(\w+)\}\}")
+_ENV_TOKEN_RE = re.compile(r"\{\{env\.(\w+)\}\}")
+
+
+def _resolve_env_token(name):
+    """Resolve a single {{env.name}} token from Automation Global Variable.
+
+    Missing variables resolve to an empty string rather than raising —
+    the same lenient behaviour as trigger tokens on shared nodes.
+    """
+    try:
+        return frappe.db.get_value(
+            "Automation Global Variable", {"variable_name": name}, "value"
+        ) or ""
+    except Exception:
+        return ""
 
 
 def resolve_value(raw_value, context):
@@ -14,6 +29,7 @@ def resolve_value(raw_value, context):
 
     Supported tokens:
         {{trigger.fieldname}}  ->  doc.get("fieldname") on the triggering document
+        {{env.varname}}        ->  value of the Automation Global Variable "varname"
 
     When ``context["trigger_doctype_select"]`` is ``"any"``, the node operates
     on whatever document actually triggered this run. Tokens referencing fields
@@ -50,4 +66,11 @@ def resolve_value(raw_value, context):
         # Sanitize to prevent XSS when token values are rendered as HTML
         return sanitize_html(val_str)
 
-    return _TRIGGER_TOKEN_RE.sub(_replace, raw_value)
+    def _replace_env(match):
+        val = _resolve_env_token(match.group(1))
+        if val is None:
+            return ""
+        return sanitize_html(str(val))
+
+    resolved = _TRIGGER_TOKEN_RE.sub(_replace, raw_value)
+    return _ENV_TOKEN_RE.sub(_replace_env, resolved)

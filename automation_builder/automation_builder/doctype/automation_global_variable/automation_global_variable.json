@@ -1,0 +1,71 @@
+{
+ "actions": [],
+ "autoname": "field:variable_name",
+ "creation": "2026-09-16 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "variable_name",
+  "description",
+  "sb_value",
+  "value"
+ ],
+ "fields": [
+  {
+   "fieldname": "variable_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Variable Name",
+   "reqd": 1,
+   "unique": 1,
+   "description": "Referenced as {{env.variable_name}} in action tokens."
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Description"
+  },
+  {
+   "fieldname": "sb_value",
+   "fieldtype": "Section Break",
+   "label": "Value"
+  },
+  {
+   "fieldname": "value",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Value",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-09-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Automation Builder",
+ "name": "Automation Global Variable",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Automation User",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "variable_name",
+ "track_changes": 1
+}

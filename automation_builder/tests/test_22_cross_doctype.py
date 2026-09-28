@@ -304,7 +304,7 @@ class TestAnyDoctypeMode(IntegrationTestCase):
     """Test 'Any (whichever triggered)' mode for shared downstream nodes."""
 
     def setUp(self):
-        for name in ["TEST-AnyMode", "TEST-AnyNoSkip"]:
+        for name in ["TEST-AnyMode", "TEST-AnyNoSkip", "TEST-FullPathSkip"]:
             frappe.db.sql("DELETE FROM `tabAutomation Trigger Condition` WHERE parent IN (SELECT name FROM `tabAutomation Trigger` WHERE parent = %s)", name)
             frappe.db.sql("DELETE FROM `tabAutomation Trigger` WHERE parent = %s", name)
             frappe.db.sql("DELETE FROM `tabAutomation Run Step` WHERE parent IN (SELECT name FROM `tabAutomation Run` WHERE automation = %s)", name)
@@ -313,7 +313,7 @@ class TestAnyDoctypeMode(IntegrationTestCase):
         frappe.db.commit()
 
     def tearDown(self):
-        for name in ["TEST-AnyMode", "TEST-AnyNoSkip"]:
+        for name in ["TEST-AnyMode", "TEST-AnyNoSkip", "TEST-FullPathSkip"]:
             frappe.db.sql("DELETE FROM `tabAutomation Trigger Condition` WHERE parent IN (SELECT name FROM `tabAutomation Trigger` WHERE parent = %s)", name)
             frappe.db.sql("DELETE FROM `tabAutomation Trigger` WHERE parent = %s", name)
             frappe.db.sql("DELETE FROM `tabAutomation Run Step` WHERE parent IN (SELECT name FROM `tabAutomation Run` WHERE automation = %s)", name)
