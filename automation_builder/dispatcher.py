@@ -139,6 +139,7 @@ def on_doc_event(doc, method):
     # inserting a Note). Without this, a created doc can match another
     # automation and recurse without bound (runaway job factory).
     if frappe.flags.get("_in_automation_action"):
+        _log_chained_trigger_skip(doc, trigger_event)
         return
 
     try:
@@ -172,6 +173,49 @@ def on_doc_event(doc, method):
                 )
     except Exception:
         frappe.log_error(title="Automation Builder dispatch error")
+
+
+def _log_chained_trigger_skip(doc, trigger_event):
+    """Make the chained-trigger block explicit instead of a silent no-op.
+
+    When an automation action creates a document that another automation is
+    configured to trigger on, the event is blocked (recursion prevention).
+    For each matching automation, a Skipped Automation Run is recorded so the
+    block is visible in Run History — nothing executes silently.
+    """
+    try:
+        automations = frappe.db.sql("""
+            SELECT DISTINCT a.name
+            FROM `tabAutomation` a
+            INNER JOIN `tabAutomation Trigger` at
+                ON at.parent = a.name
+            WHERE a.enabled = 1
+                AND a.status = 'Published'
+                AND at.trigger_type = 'DocType Event'
+                AND at.trigger_doctype = %s
+                AND at.trigger_event = %s
+        """, (doc.doctype, trigger_event), as_dict=True)
+
+        for auto in automations:
+            frappe.get_doc({
+                "doctype": "Automation Run",
+                "automation": auto.name,
+                "reference_doctype": doc.doctype,
+                "reference_name": doc.name,
+                "status": "Skipped",
+                "started_at": frappe.utils.now_datetime(),
+                "ended_at": frappe.utils.now_datetime(),
+                "log": json.dumps([{
+                    "step_type": "chained_trigger",
+                    "status": "Skipped",
+                    "output": "Skipped chained trigger: document was created by an automation action",
+                }]),
+            }).insert(ignore_permissions=True)
+    except Exception as e:
+        frappe.log_error(
+            title="Automation Builder chained-trigger log error",
+            message=str(e),
+        )
 
 
 def _evaluate_trigger_conditions(automation_name, doc):

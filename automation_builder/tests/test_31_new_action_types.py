@@ -72,6 +72,7 @@ def _get_runs(automation, ref_doctype, ref_name):
         "Automation Run",
         filters={"automation": automation, "reference_doctype": ref_doctype,
                  "reference_name": ref_name},
+        fields=["name", "status", "log"],
         order_by="creation desc",
     )
 
@@ -414,6 +415,98 @@ class TestStage31GeneratePdf(IntegrationTestCase):
             filters={"attached_to_doctype": "Note", "attached_to_name": note.name},
         )
         self.assertTrue(len(files) >= 1, "Real PDF attachment should exist on the Note")
+
+
+class TestStage31ChainedTrigger(IntegrationTestCase):
+    """Chained-trigger case: Automation A creates a doc that Automation B triggers on.
+
+    B must NOT execute (recursion prevention) — but the block is recorded as a
+    Skipped Automation Run, not a silent no-op.
+    """
+
+    def setUp(self):
+        for n in ("ST31-Chain-A", "ST31-Chain-B"):
+            if frappe.db.exists("Automation", n):
+                frappe.delete_doc("Automation", n, force=True)
+        frappe.db.commit()
+
+    def tearDown(self):
+        for n in ("ST31-Chain-A", "ST31-Chain-B"):
+            if frappe.db.exists("Automation", n):
+                frappe.delete_doc("Automation", n, force=True)
+        frappe.db.commit()
+
+    def test_chained_trigger_skipped_with_explicit_run(self):
+        """Lead insert -> A runs -> creates Note -> B (triggers on Note) does NOT
+        execute; B gets an explicit Skipped run with the chained-trigger message."""
+        # A: Lead After Insert -> create_document (Note)
+        _create_and_publish(
+            "ST31-Chain-A",
+            [
+                _make_trigger_node("trigger", trigger_doctype="Lead"),
+                _make_action_node("act-create", "create_document", {
+                    "target_doctype": "Note",
+                    "field_mapping": [{"target_field": "title", "source_value": "CHAIN-NOTE"}],
+                }),
+            ],
+            [_make_edge("trigger", "act-create")],
+            [_make_trigger("Lead", "After Insert", graph_node_id="trigger")],
+        )
+
+        # B: Note After Insert -> telegram (mocked)
+        _create_and_publish(
+            "ST31-Chain-B",
+            [
+                _make_trigger_node("trigger", trigger_doctype="Note"),
+                _make_action_node("act-tg", "telegram", {
+                    "chat_id": "TEST", "message": "Chained fire",
+                }),
+            ],
+            [_make_edge("trigger", "act-tg")],
+            [_make_trigger("Note", "After Insert", graph_node_id="trigger")],
+        )
+
+        lead = frappe.get_doc({"doctype": "Lead", "lead_name": "ST31-Chain-Lead"})
+        lead.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+        with patch("automation_builder.dispatcher.frappe.enqueue",
+                   side_effect=lambda method, **kw: execute_automation(**kw)), \
+             patch("automation_builder.action_types.telegram._get_bot_token",
+                   return_value=None):
+            execute_automation("ST31-Chain-A", "Lead", lead.name)
+
+        # A executed: Success run with create_document step
+        runs_a = _get_runs("ST31-Chain-A", "Lead", lead.name)
+        self.assertTrue(len(runs_a) >= 1)
+        self.assertEqual(runs_a[0].status, "Success")
+
+        # The Note was created
+        notes = frappe.get_all("Note", filters={"title": "CHAIN-NOTE"})
+        self.assertTrue(len(notes) >= 1)
+        created_note = notes[0]
+
+        # B did NOT execute — but the block is recorded explicitly
+        runs_b = frappe.get_all(
+            "Automation Run",
+            filters={"automation": "ST31-Chain-B", "reference_doctype": "Note",
+                     "reference_name": created_note.name},
+            fields=["status", "log"],
+        )
+        self.assertEqual(len(runs_b), 1, "Exactly one explicit Skipped run for B")
+        self.assertEqual(runs_b[0].status, "Skipped")
+        log_b = json.loads(runs_b[0].log)
+        self.assertIn(
+            "Skipped chained trigger: document was created by an automation action",
+            log_b[0]["output"],
+        )
+
+        # B has no Success run — its action never executed
+        success_b = frappe.get_all(
+            "Automation Run",
+            filters={"automation": "ST31-Chain-B", "status": "Success"},
+        )
+        self.assertEqual(len(success_b), 0, "B must never execute from a chained trigger")
 
 
 class TestStage31GlobalVariables(IntegrationTestCase):

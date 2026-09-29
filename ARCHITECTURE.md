@@ -263,7 +263,11 @@ The walk produces a **trace** — an ordered list of entries like `[{"type": "br
 `execute_automation()` runs as a `frappe.enqueue()` background job on the `"short"` Redis queue. This is necessary because:
 1. Action types like `create_document` call `doc.insert()` which triggers further hooks — running inline would cause recursion
 2. HTTP Request and Telegram actions involve network I/O that shouldn't block the web request
-3. The re-entry guard (`frappe.flags["_automation_running_{doctype}_{name}"]`) prevents infinite trigger loops when an action saves a document that would re-trigger the same automation (added Stage 15-16, `804264c`)
+3. Two re-entry guards prevent unbounded trigger loops:
+   - `frappe.flags["_automation_running_{doctype}_{name}"]` (added Stage 15-16, `804264c`) covers the **reference document** — the doc that fired the run. If an action re-saves it (e.g. `update_field` on the Same Document), the re-fired event is skipped.
+   - `frappe.flags["_in_automation_action"]` (added Stage 31) covers **documents created by actions**. Without it, a `create_document` action's inserted doc could match another Published automation and recurse without bound (a runaway job factory). While an action executes, any doc event it fires is skipped — and the blocked chained trigger is recorded as a Skipped Automation Run ("Skipped chained trigger: document was created by an automation action") rather than a silent no-op.
+
+   Chained automation (A creates a doc that B triggers on) is deliberately BLOCKED, not depth-limited: every automation run is caused by exactly one user-visible event, so behavior is predictable and auditable. A depth counter would allow intentional chaining but introduces hidden executions — a future feature if genuinely needed, with explicit UI disclosure.
 
 ## 5. The Extensibility Model
 
@@ -624,7 +628,7 @@ All tests use `frappe.tests.IntegrationTestCase` and run against a real MariaDB 
 | 5 action types: Create Document, Send Email, HTTP Request, Telegram, Update Field | ✅ |
 | 2 logic types: IF (2 branches), Switch (N branches + default) | ✅ |
 | Background execution via `frappe.enqueue()` | ✅ |
-| Re-entry guard preventing infinite trigger loops | ✅ |
+| Re-entry guards (reference doc + action-created docs; chained triggers blocked + logged) | ✅ |
 | Per-step execution logging (Automation Run + Run Step) | ✅ |
 | Pluggable registry (add types with zero core changes) | ✅ |
 | Schema-driven config panel (generic rendering from config_schema) | ✅ |
@@ -669,7 +673,7 @@ The architecture is designed to accommodate all of these. The registry pattern m
 
 6. **Legacy fields on Automation are hidden but not removed.** The `trigger_doctype`, `trigger_event`, `condition_field`, `condition_operator`, `condition_value`, and `workflow_json` fields still exist on the Automation DocType (marked `hidden: 1`). They were migrated to `triggers` table and `graph_definition` but are kept for backward compatibility.
 
-7. **The re-entry guard uses `frappe.flags` which is per-request.** If two background jobs for the same document run simultaneously (unlikely with `"short"` queue but theoretically possible), the guard might not prevent both from executing. The guard key is `_automation_running_{doctype}_{name}`. Added in Stage 15-16 (`804264c`); was never reported in any progress update — discovered via source inspection during this document review.
+7. **The re-entry guards use `frappe.flags` which is per-request.** If two background jobs for the same document run simultaneously (unlikely with `"short"` queue but theoretically possible), the guards might not prevent both from executing. Two guards exist: `_automation_running_{doctype}_{name}` (reference doc, added Stage 15-16 `804264c`) and `_in_automation_action` (docs created by actions, added Stage 31 — chained triggers are blocked and recorded as Skipped runs, not depth-limited). The per-request limitation applies to both; discovered via source inspection, the chained-trigger gap surfaced during Stage 31's test runs as a real runaway-loop hang.
 
 8. **Telegram mock mode output is clear but indistinguishable in Automation Run status.** When no bot token is configured, the `execute()` function returns `status: "Success"` with output `"MOCK MODE (no Telegram bot token configured): would have sent to chat_id=...`. The `MOCK MODE` prefix is unambiguous in the Run Step `output` field, but the Run itself is marked `Success` — there is no separate `Mocked` or `Partial` status to distinguish a real send from a mock at the Run level.
 
