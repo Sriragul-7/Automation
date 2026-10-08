@@ -3,7 +3,7 @@
 const _frappe__ = typeof window !== 'undefined' && typeof window.__ === 'function' ? window.__ : null;
 
 import { createApp, ref, h, defineComponent } from 'vue'
-import { createRouter, createMemoryHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import App from './App.vue'
 
 import '@vue-flow/core/dist/style.css'
@@ -18,7 +18,7 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createMemoryHistory('/'),
+  history: createWebHashHistory('/'),
   routes,
 })
 

@@ -591,6 +591,9 @@ function updateNodeData(newData) {
   nodes.value = nodes.value.map(n =>
     n.id === nodeId ? { ...n, data: { ...n.data, ...newData } } : n
   )
+  // Vue Flow needs explicit notification that node internals (handles, outputs) have changed
+  const vf = useVueFlow()
+  vf?.updateNodeInternals([nodeId])
   selectedNode.value = null
 }
 
@@ -998,6 +1001,7 @@ async function save() {
 
     automationId.value = result.name
     frappe.show_alert({ message: 'Automation saved', indicator: 'green' })
+    router.push({ name: 'builder', params: { name: result.name } })
   } catch (e) {
     frappe.msgprint('Save failed: ' + (e.message || e))
   } finally {
@@ -1013,6 +1017,10 @@ function showRuns() {
   router.push({ name: 'runs', params: { name: automationId.value } })
 }
 
+// Close flyouts on MOUSEDOWN, not click: the type picker is opened on a
+// connection drag drop, whose trailing click event would otherwise close it
+// instantly (click fires on the common ancestor of down/up targets).
+// The next deliberate user interaction always starts with a mousedown.
 function handleClickOutside(e) {
   if (pickerVisible.value && !e.target.closest('.ab-type-picker')) {
     pickerVisible.value = false
@@ -1036,7 +1044,7 @@ onMounted(async () => {
     console.warn('[AB] Could not get useVueFlow instance, using fallback coordinate conversion')
   }
 
-  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('mousedown', handleClickOutside)
 
   try {
     actionTypes.value = await getActionTypes()
@@ -1184,7 +1192,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('mousedown', handleClickOutside)
 })
 </script>
 
